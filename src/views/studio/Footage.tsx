@@ -151,7 +151,7 @@ export const Footage = () => {
           </h1>
           <p className="lead">Everything Bare Roots has dropped off, by drop. Download what you need, mark it used when it's cut, archive it once it's safe to free the space.</p>
         </div>
-        <div className="stack" style={{ minWidth: 220 }}>
+        <div className="stack" style={{ minWidth: 220 }} data-tour="footage-storage">
           <div className="row row-between">
             <span className="small">Storage</span>
             <span className="small muted">
@@ -223,11 +223,11 @@ export const Footage = () => {
       ) : null}
 
       {!groups.length ? (
-        <Empty icon="inbox" title={status === "all" ? "No footage yet" : "Nothing in this view"}>
+        <div data-tour="footage-batches"><Empty icon="inbox" title={status === "all" ? "No footage yet" : "Nothing in this view"}>
           {status === "all" ? "When Iisha or Sabrina drop files off, each drop shows up here as a group with thumbnails." : "Try another filter."}
-        </Empty>
+        </Empty></div>
       ) : (
-        <div className="stack" style={{ gap: "1.25rem" }}>
+        <div className="stack" style={{ gap: "1.25rem" }} data-tour="footage-batches">
           {groups.map(({ batch, assets }) => (
             <BatchCard
               key={batch.id}

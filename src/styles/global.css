@@ -1944,3 +1944,117 @@ details > summary::-webkit-details-marker {
     height: 12px;
   }
 }
+
+/* ─────────────────────────── Guided walkthrough ────────────────────────── */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 21, 24, 0.55);
+}
+.tour-spot {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 2px var(--gold),
+    0 0 0 9999px rgba(28, 21, 24, 0.62);
+  transition:
+    top var(--base) var(--ease),
+    left var(--base) var(--ease),
+    width var(--base) var(--ease),
+    height var(--base) var(--ease);
+}
+.tour-card {
+  pointer-events: auto;
+  position: fixed;
+  z-index: 91;
+  padding: 1.1rem 1.2rem 1rem;
+  background: var(--forest);
+  color: var(--cream);
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  animation: rise var(--base) var(--ease);
+}
+.tour-card h3 {
+  font-size: 1.4rem;
+}
+.tour-card-bottom {
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--tabbar) + var(--safe-b) + 12px);
+  width: auto;
+  max-width: 520px;
+  margin: 0 auto;
+}
+@media (min-width: 960px) {
+  .tour-card-bottom {
+    bottom: 24px;
+    left: calc(var(--rail) + 24px);
+    right: auto;
+    width: 420px;
+  }
+}
+.tour-dots {
+  display: flex;
+  gap: 5px;
+  margin-top: 12px;
+}
+.tour-dots i {
+  flex: 1;
+  height: 2px;
+  background: var(--panel-3);
+  border-radius: var(--r-pill);
+}
+.tour-dots i.done {
+  background: var(--bronze);
+}
+.tour-dots i.on {
+  background: var(--gold);
+}
+.guide-fab {
+  position: fixed;
+  right: 14px;
+  bottom: calc(var(--tabbar) + var(--safe-b) + 14px);
+  z-index: 85;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px 0 10px;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--gilt);
+  border: 1px solid var(--line-gold);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  transition:
+    background var(--base) var(--ease),
+    color var(--base) var(--ease),
+    transform var(--fast) var(--ease);
+}
+.guide-fab .icon {
+  width: 20px;
+  height: 20px;
+}
+.guide-fab:hover {
+  transform: translateY(-1px);
+  background: var(--plum-deep);
+}
+.guide-fab.on {
+  background: var(--gold);
+  color: var(--ink);
+  border-color: var(--gold);
+}
+@media (min-width: 960px) {
+  .guide-fab {
+    bottom: 20px;
+    right: 20px;
+  }
+}

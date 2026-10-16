@@ -145,7 +145,7 @@ export const DropOff = () => {
 
       <section className="section" data-reveal="" style={{ "--reveal-delay": "80ms" } as React.CSSProperties}>
         <div className="stack" style={{ gap: "1rem" }}>
-          <div className="field">
+          <div className="field" data-tour="drop-note">
             <label htmlFor="note">What is this footage? (optional)</label>
             <input
               id="note"
@@ -157,7 +157,7 @@ export const DropOff = () => {
               maxLength={300}
             />
           </div>
-          <DropZone onFiles={onFiles} title={starting ? "One moment…" : "Tap to add photos & videos"} />
+          <div data-tour="drop-zone"><DropZone onFiles={onFiles} title={starting ? "One moment…" : "Tap to add photos & videos"} /></div>
           {uploader.jobs.length ? (
             <div className="card">
               <div className="card-body">
@@ -187,7 +187,7 @@ export const DropOff = () => {
         </div>
       </section>
 
-      <section className="section" data-reveal="" style={{ "--reveal-delay": "160ms" } as React.CSSProperties}>
+      <section className="section" data-reveal="" data-tour="drop-history" style={{ "--reveal-delay": "160ms" } as React.CSSProperties}>
         <div className="section-head">
           <h2>
             Your <span className="accent">drop-offs</span>

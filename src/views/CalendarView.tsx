@@ -155,7 +155,7 @@ export const CalendarView = () => {
         </section>
       ) : null}
 
-      <section className="section" style={{ paddingTop: 0 }}>
+      <section className="section" style={{ paddingTop: 0 }} data-tour="cal-week">
         <div className="section-head">
           <h2>
             This <span className="accent">week</span>
@@ -192,7 +192,7 @@ export const CalendarView = () => {
             </button>
           </div>
         </div>
-        <div className="cal" role="grid">
+        <div className="cal" role="grid" data-tour="cal-month">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
             <div className="dow" key={d}>
               {d}

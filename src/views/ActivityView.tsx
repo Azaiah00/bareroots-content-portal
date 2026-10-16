@@ -40,9 +40,9 @@ export const ActivityView = () => {
         </div>
       </div>
       {!items.length ? (
-        <Empty icon="bell" title="Quiet so far">The feed fills as footage comes in and content goes out.</Empty>
+        <div data-tour="activity-feed"><Empty icon="bell" title="Quiet so far">The feed fills as footage comes in and content goes out.</Empty></div>
       ) : (
-        <div className="card">
+        <div className="card" data-tour="activity-feed">
           <div className="card-body feed">
             {items.map((a) => {
               const to = target(a, isStudio);

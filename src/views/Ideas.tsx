@@ -418,13 +418,13 @@ export const Ideas = () => {
               { value: "made", label: "Made" },
             ]}
           />
-          <Button variant="gold" icon="plus" onClick={() => setCreating(true)}>
+          <Button variant="gold" icon="plus" data-tour="ideas-pin" onClick={() => setCreating(true)}>
             Pin an idea
           </Button>
         </div>
       </div>
 
-      <div className="board on-light" data-reveal="" style={{ "--reveal-delay": "80ms" } as React.CSSProperties}>
+      <div className="board on-light" data-reveal="" data-tour="ideas-board" style={{ "--reveal-delay": "80ms" } as React.CSSProperties}>
         {list.length ? (
           <div className="notes">
             {list.map((i) => (

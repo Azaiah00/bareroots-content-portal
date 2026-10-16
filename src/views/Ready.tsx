@@ -116,7 +116,7 @@ export const Ready = () => {
         </div>
         <div className="row">
           {isStudio ? (
-            <Button variant="gold" icon="plus" onClick={() => navigate("/compose/new")}>
+            <Button variant="gold" icon="plus" data-tour="ready-new" onClick={() => navigate("/compose/new")}>
               New content
             </Button>
           ) : null}
@@ -124,7 +124,7 @@ export const Ready = () => {
       </div>
 
       <div className="row row-between" data-reveal="" style={{ marginBottom: "1rem", "--reveal-delay": "60ms" } as React.CSSProperties}>
-        <div className="row" style={{ gap: "1.5rem" }}>
+        <div className="row" style={{ gap: "1.5rem" }} data-tour="ready-stats">
           <div className="stat">
             <b>{needsOk}</b>
             <span>{isStudio ? "Awaiting approval" : "Need your OK"}</span>
@@ -159,11 +159,11 @@ export const Ready = () => {
       </div>
 
       {!list.length ? (
-        <Empty icon="sparkle" title={filter === "all" ? (isStudio ? "No content yet" : "Nothing here yet") : "Nothing in this view"}>
+        <div data-tour="ready-grid"><Empty icon="sparkle" title={filter === "all" ? (isStudio ? "No content yet" : "Nothing here yet") : "Nothing in this view"}>
           {isStudio ? "Start with New content: upload the finished file, write the caption, set the posting plan, publish." : "Your first finished posts land here with captions, hashtags and posting times attached."}
-        </Empty>
+        </Empty></div>
       ) : (
-        <div className="grid grid-3">
+        <div className="grid grid-3" data-tour="ready-grid">
           {list.map((d) => (
             <DeliverableCard key={d.id} d={d} onOpen={() => navigate(withParam(route, "d", d.id))} />
           ))}

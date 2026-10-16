@@ -44,7 +44,8 @@ export type IconName =
   | "star"
   | "arrow-right"
   | "camera"
-  | "crown";
+  | "crown"
+  | "help";
 
 const paths: Record<IconName, JSX.Element> = {
   upload: (
@@ -233,6 +234,13 @@ const paths: Record<IconName, JSX.Element> = {
     <>
       <path d="M4 17 3 7l5 4 4-6 4 6 5-4-1 10z" />
       <path d="M4 17h16" />
+    </>
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7" />
+      <path d="M12 16.5v.5" />
     </>
   ),
 };

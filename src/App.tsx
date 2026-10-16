@@ -12,6 +12,7 @@ import { ActivityView } from "@/views/ActivityView";
 import { Footage } from "@/views/studio/Footage";
 import { Composer } from "@/views/studio/Composer";
 import { Icon } from "@/components/Icon";
+import { TourProvider, GuideButton } from "@/components/Tour";
 
 const Loading = () => (
   <div className="gate">
@@ -72,6 +73,7 @@ const Routes = () => {
   }
 
   return (
+    <TourProvider>
     <Shell route={route}>
       {error ? (
         <div className="card" style={{ marginBottom: "1rem", borderColor: "rgba(180,83,63,0.5)" }}>
@@ -87,6 +89,8 @@ const Routes = () => {
       ) : null}
       {view}
     </Shell>
+    <GuideButton />
+    </TourProvider>
   );
 };
 
