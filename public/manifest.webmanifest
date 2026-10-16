@@ -1,0 +1,12 @@
+{
+  "name": "Bare Roots Content Portal",
+  "short_name": "Bare Roots",
+  "description": "Drop off footage, pick up finished posts.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#25321F",
+  "theme_color": "#25321F",
+  "icons": [
+    { "src": "/img/logo-br.png", "sizes": "any", "type": "image/png", "purpose": "any" }
+  ]
+}
