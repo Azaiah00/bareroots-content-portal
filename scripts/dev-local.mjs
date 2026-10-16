@@ -65,7 +65,7 @@ console.log(`  local S3   → http://localhost:${S3_PORT}  (bucket "${BUCKET}")`
 // ── 2. Functions ──────────────────────────────────────────────────────
 const { register: registerTsx } = await import("tsx/esm/api");
 registerTsx();
-const names = ["auth", "state", "health", "upload", "raw", "deliverables", "ideas", "preview"];
+const names = ["auth", "state", "health", "upload", "raw", "deliverables", "ideas", "preview", "admin"];
 const routes = [];
 for (const n of names) {
   const mod = await import(pathToFileURL(resolve(ROOT, `netlify/functions/${n}.ts`)).href);

@@ -30,6 +30,9 @@ export const triggerDownload = (url: string) => {
   a.rel = "noopener";
   // `download` is ignored cross-origin; the presigned URL carries
   // Content-Disposition: attachment, which is what actually forces the save.
+  // target=_blank means that if a browser ever shows the file inline instead,
+  // it opens in a new tab and the portal is never navigated away from.
+  a.target = "_blank";
   a.style.display = "none";
   document.body.appendChild(a);
   a.click();

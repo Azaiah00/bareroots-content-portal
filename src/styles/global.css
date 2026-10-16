@@ -1082,7 +1082,9 @@ button {
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* Same layer as the lightbox: both are portals on <body>, so whichever opened
+     last paints on top — a confirm over a preview, or a preview over a sheet. */
+  z-index: 70;
   background: rgba(28, 21, 24, 0.72);
   backdrop-filter: blur(6px);
   display: grid;
@@ -2021,7 +2023,8 @@ details > summary::-webkit-details-marker {
   position: fixed;
   right: 14px;
   bottom: calc(var(--tabbar) + var(--safe-b) + 14px);
-  z-index: 85;
+  /* Below dialogs (60), lightbox (70) and toasts (80) so it never covers a button. */
+  z-index: 55;
   display: inline-flex;
   align-items: center;
   gap: 6px;

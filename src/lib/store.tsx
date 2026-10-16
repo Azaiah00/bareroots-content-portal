@@ -107,14 +107,18 @@ export const PortalProvider = ({ children }: { children: ReactNode }) => {
     const onVis = () => {
       if (document.visibilityState === "visible") refresh();
     };
+    // Moving between sections is a natural moment to pick up what the other side did.
+    const onRoute = () => refresh();
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("focus", onVis);
+    window.addEventListener("hashchange", onRoute);
     const t = setInterval(() => {
       if (document.visibilityState === "visible") refresh();
     }, 90_000);
     return () => {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onVis);
+      window.removeEventListener("hashchange", onRoute);
       clearInterval(t);
     };
   }, [session, refresh]);

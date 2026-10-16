@@ -219,9 +219,12 @@ const TourOverlay = ({ steps, index, setIndex, onClose, seenKey }: { steps: Tour
 
 /** Floating Guide button — shown on every page, every size. */
 export const GuideButton = () => {
-  const { active, start, stop } = useTour();
+  const { active, start } = useTour();
+  // While the guide runs, its card carries the close control; the button would
+  // only sit underneath the card on a phone.
+  if (active) return null;
   return (
-    <button type="button" className={`guide-fab ${active ? "on" : ""}`} onClick={active ? stop : start} aria-pressed={active} aria-label={active ? "Turn the guide off" : "Turn the guide on"} title={active ? "Guide: on" : "Guide: show me around"}>
+    <button type="button" className="guide-fab" onClick={start} aria-label="Turn the guide on" title="Guide: show me around">
       <Icon name="help" />
       <span>Guide</span>
     </button>

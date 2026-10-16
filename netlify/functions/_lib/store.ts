@@ -105,7 +105,24 @@ export const readCollection = async <T>(name: CollectionName): Promise<T[]> => (
  * place; whatever it returns is handed back to the caller. Retries up to six
  * times on a write conflict.
  */
-export const mutateCollection = async <T, R = void>(name: CollectionName, fn: (items: T[]) => R | Promise<R>): Promise<R> => {
+// In-process lock per collection: drivers without compare-and-set (b2, file)
+// would otherwise lose a write when two mutations overlap in one process.
+const locks = new Map<string, Promise<unknown>>();
+const withLock = async <R>(name: string, fn: () => Promise<R>): Promise<R> => {
+  const prev = locks.get(name) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  locks.set(name, run);
+  try {
+    return await run;
+  } finally {
+    if (locks.get(name) === run) locks.delete(name);
+  }
+};
+
+export const mutateCollection = <T, R = void>(name: CollectionName, fn: (items: T[]) => R | Promise<R>): Promise<R> =>
+  withLock(name, () => mutateUnlocked<T, R>(name, fn));
+
+const mutateUnlocked = async <T, R = void>(name: CollectionName, fn: (items: T[]) => R | Promise<R>): Promise<R> => {
   const d = driver();
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 6; attempt++) {

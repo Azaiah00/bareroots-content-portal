@@ -143,9 +143,10 @@ scripts/dev-local.mjs       the no-accounts dev server
 
 ---
 
-## 6. Checks run before handoff
+## 6. Checks run before handoff (Oct 16, 2026 — final pass)
 
 - `npm run typecheck` and `npm run build` clean.
-- 40 API assertions (auth, rate-limit path, presign/PUT/HEAD/complete, role filtering, hashtag normalisation, approval clock, change→republish→approve, posted marks, ideas, archive deleting objects).
-- Real browser upload through the Drop Off UI with in-browser poster generation.
-- Every view screenshotted at 390×844 and 1440×900, both roles — no console errors.
+- 52 API assertions (auth + lockout, presign/PUT/HEAD/complete, role filtering, hashtag normalisation, approval clock, change→republish→approve, posted marks, ideas, archive deleting objects, both-sides delete, orphan recovery, admin endpoint guards, path traversal).
+- 31-step real-browser workflow, client on a phone viewport and studio on desktop, through the actual UI: gate → tour → drop-off with thumbnails → pin idea + comment → studio marks used → composer (main + cover upload, caption, hashtags, suggested times, source footage, preview) → publish → client downloads, copies caption, marks posted, requests a change → studio delivers the fix → client approves → client deletes via preview → guide on/off → studio archives. Zero page errors.
+- Live site: health ok, CORS fixed via `/api/admin/cors`, real uploads verified from both roles against the production bucket.
+- Layout checked at 390, 430, 768, 1024 and 1920 px wide — no horizontal overflow anywhere.
