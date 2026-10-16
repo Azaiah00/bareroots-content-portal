@@ -3,7 +3,7 @@ import type { RawAsset, RawBatch } from "@shared/types";
 import { usePortal } from "@/lib/store";
 import { api } from "@/lib/api";
 import { DropZone, UploadList, useUploader } from "@/components/Uploader";
-import { Button, Empty, Lightbox, MediaTile } from "@/components/ui";
+import { Button, Empty, Lightbox, MediaTile, useConfirm } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { bytes, fmtDateTime, plural, relative } from "@/lib/format";
 import { useReveal } from "@/lib/motion";
@@ -23,7 +23,39 @@ export const DropOff = () => {
   const [starting, setStarting] = useState(false);
   const [view, setView] = useState<{ asset: RawAsset; url: string } | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const { confirm, element: confirmEl } = useConfirm();
   const ref = useReveal<HTMLDivElement>([state?.batches.length]);
+
+  const deleteAsset = async (asset: RawAsset) => {
+    if (!(await confirm(`Delete ${asset.label || asset.name}?`, { body: "It's removed from storage for good. The studio won't be able to use it.", action: "Delete", danger: true }))) return;
+    setBusy(asset.id);
+    try {
+      await api(`/api/raw/${asset.id}`, { method: "DELETE" });
+      setView(null);
+      toast("Deleted.");
+      await refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't delete that.", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteBatch = async (batch: RawBatch, count: number) => {
+    if (!(await confirm(`Delete this whole drop-off?`, { body: `${plural(count, "file")} will be removed from storage for good.`, action: "Delete drop-off", danger: true }))) return;
+    setBusy(batch.id);
+    try {
+      await api(`/api/raw/batches/${batch.id}`, { method: "DELETE" });
+      if (batchId === batch.id) startFresh();
+      toast("Drop-off deleted.");
+      await refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't delete that.", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const ensureBatch = async (): Promise<string> => {
     if (batchId) return batchId;
@@ -178,13 +210,18 @@ export const DropOff = () => {
                         {batch.createdBy} · {fmtDateTime(batch.createdAt)} ({relative(batch.createdAt)}) · {plural(assets.length, "file")} · {bytes(assets.reduce((a, b) => a + b.size, 0))}
                       </div>
                     </div>
-                    {assets.some((a) => a.status === "used") ? (
-                      <span className="chip chip-gold">
-                        <Icon name="sparkle" style={{ width: 12, height: 12 }} /> Used in content
-                      </span>
-                    ) : (
-                      <span className="chip">With the studio</span>
-                    )}
+                    <div className="row" style={{ gap: 8 }}>
+                      {assets.some((a) => a.status === "used") ? (
+                        <span className="chip chip-gold">
+                          <Icon name="sparkle" style={{ width: 12, height: 12 }} /> Used in content
+                        </span>
+                      ) : (
+                        <span className="chip">With the studio</span>
+                      )}
+                      <Button size="xs" variant="alert" icon="trash" busy={busy === batch.id} onClick={() => deleteBatch(batch, assets.length)}>
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid grid-tiles">
                     {assets.map((a) => (
@@ -201,7 +238,20 @@ export const DropOff = () => {
         )}
       </section>
 
-      {view ? <Lightbox url={view.url} kind={view.asset.kind} name={view.asset.name} onClose={() => setView(null)} /> : null}
+      {view ? (
+        <Lightbox
+          url={view.url}
+          kind={view.asset.kind}
+          name={view.asset.name}
+          onClose={() => setView(null)}
+          actions={
+            <Button size="xs" variant="alert" icon="trash" busy={busy === view.asset.id} onClick={() => deleteAsset(view.asset)}>
+              Delete
+            </Button>
+          }
+        />
+      ) : null}
+      {confirmEl}
     </div>
   );
 };

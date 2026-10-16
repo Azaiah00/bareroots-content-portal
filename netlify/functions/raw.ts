@@ -14,7 +14,8 @@ import { logActivity } from "./_lib/activity";
  * PATCH  /api/raw/batches/:id        { note }            rename (author or studio)
  * PATCH  /api/raw/:id                { label | status }  label: any role; status: studio
  * POST   /api/raw/archive            { ids }             studio: delete objects, keep the record as "archived"
- * DELETE /api/raw/:id                                    studio: delete everything
+ * DELETE /api/raw/:id                                    any role: delete file + objects
+ * DELETE /api/raw/batches/:id                            any role: delete a whole drop-off
  * GET    /api/raw/:id/download                           any role: attachment URL
  * GET    /api/raw/:id/play                               any role: inline URL (video/audio playback)
  */
@@ -38,6 +39,28 @@ export default handle(async (req) => {
         items.unshift(batch);
       });
       return json({ batch });
+    }
+    if (req.method === "DELETE" && parts[1]) {
+      // Delete a whole drop-off: every file in it plus the batch record. Either side may do this.
+      const keys: string[] = [];
+      let removed = 0;
+      await mutateCollection<RawAsset>("raw", (items) => {
+        for (let i = items.length - 1; i >= 0; i--) {
+          if (items[i].batchId === parts[1]) {
+            keys.push(items[i].key, items[i].posterKey || "");
+            items.splice(i, 1);
+            removed++;
+          }
+        }
+      });
+      await deleteObjects(keys);
+      let note = "";
+      await mutateCollection<RawBatch>("batches", (items) => {
+        const i = items.findIndex((x) => x.id === parts[1]);
+        if (i >= 0) note = items.splice(i, 1)[0].note;
+      });
+      await logActivity(session.name, session.role, "raw.archived", `${session.name} deleted a drop-off${note ? ` — ${note}` : ""} (${removed} file${removed === 1 ? "" : "s"})`).catch(() => {});
+      return json({ ok: true, removed });
     }
     if (req.method === "PATCH" && parts[1]) {
       const body = await readJson<{ note?: string }>(req);
@@ -109,7 +132,7 @@ export default handle(async (req) => {
   }
 
   if (req.method === "DELETE") {
-    if (!isStudio) throw new HttpError(403, "Only the studio can delete footage.");
+    // Either side may delete a raw file — it is the client's own footage.
     let removed: RawAsset | undefined;
     await mutateCollection<RawAsset>("raw", (items) => {
       const i = items.findIndex((x) => x.id === assetId);
@@ -121,6 +144,7 @@ export default handle(async (req) => {
       const b = items.find((x) => x.id === removed!.batchId);
       if (b) b.count = Math.max(0, b.count - 1);
     });
+    await logActivity(session.name, session.role, "raw.archived", `${session.name} deleted ${removed.name}`).catch(() => {});
     return json({ ok: true });
   }
 

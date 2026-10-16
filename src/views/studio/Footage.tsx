@@ -109,6 +109,27 @@ export const Footage = () => {
     });
   };
 
+  const deleteMany = async (ids: string[]) => {
+    const list = (state?.raw ?? []).filter((r) => ids.includes(r.id));
+    if (!(await confirm(`Delete ${plural(ids.length, "file")} for good?`, { body: `Unlike Archive, this removes the record too — ${bytes(list.reduce((a, b) => a + b.size, 0))} freed, nothing left in the library.`, action: "Delete", danger: true }))) return;
+    run("delete", async () => {
+      for (const id of ids) await api(`/api/raw/${id}`, { method: "DELETE" });
+      setSelected(new Set());
+      setView(null);
+      await refresh();
+      toast(`Deleted ${plural(ids.length, "file")}.`);
+    });
+  };
+
+  const deleteBatch = async (batch: RawBatch, count: number) => {
+    if (!(await confirm(`Delete this whole drop-off?`, { body: `${plural(count, "file")} and the drop-off record are removed for good.`, action: "Delete drop-off", danger: true }))) return;
+    run(`batch-${batch.id}`, async () => {
+      await api(`/api/raw/batches/${batch.id}`, { method: "DELETE" });
+      await refresh();
+      toast("Drop-off deleted.");
+    });
+  };
+
   const open = (a: RawAsset) =>
     run(`open-${a.id}`, async () => {
       const { url } = await api<{ url: string }>(`/api/raw/${a.id}/play`);
@@ -193,6 +214,9 @@ export const Footage = () => {
               <Button size="sm" variant="alert" icon="archive" busy={busy === "archive"} onClick={() => archiveMany([...selected])}>
                 Archive
               </Button>
+              <Button size="sm" variant="alert" icon="trash" busy={busy === "delete"} onClick={() => deleteMany([...selected])}>
+                Delete
+              </Button>
             </div>
           </div>
         </div>
@@ -223,6 +247,7 @@ export const Footage = () => {
               onToggle={toggle}
               onOpen={open}
               onSelectAll={() => setSelected((s) => new Set([...s, ...assets.map((a) => a.id)]))}
+              onDelete={() => deleteBatch(batch, assets.length)}
               preview={preview}
             />
           ))}
@@ -250,6 +275,9 @@ export const Footage = () => {
                   </Button>
                 </>
               ) : null}
+              <Button size="xs" variant="alert" icon="trash" onClick={() => deleteMany([view.asset.id])}>
+                Delete
+              </Button>
             </>
           }
         />
@@ -269,6 +297,7 @@ const BatchCard = ({
   onToggle,
   onOpen,
   onSelectAll,
+  onDelete,
   preview,
 }: {
   batch: RawBatch;
@@ -280,6 +309,7 @@ const BatchCard = ({
   onToggle: (id: string) => void;
   onOpen: (a: RawAsset) => void;
   onSelectAll: () => void;
+  onDelete: () => void;
   preview: (k?: string) => string | undefined;
 }) => {
   const total = assets.reduce((a, b) => a + b.size, 0);
@@ -301,6 +331,9 @@ const BatchCard = ({
             {fresh ? <span className="chip chip-gold">{fresh} new</span> : <span className="chip">All handled</span>}
             <Button size="xs" onClick={onSelectAll}>
               Select all
+            </Button>
+            <Button size="xs" variant="alert" icon="trash" onClick={onDelete}>
+              Delete
             </Button>
           </div>
         </div>
