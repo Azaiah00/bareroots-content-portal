@@ -14,21 +14,18 @@
  * If the key can't set CORS (a bucket-restricted key lacks that capability),
  * it prints the exact rule to paste into the Backblaze web console instead.
  */
-import { fileURLToPath } from "node:url";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   S3Client,
   ListObjectsV2Command,
-  PutBucketCorsCommand,
-  GetBucketCorsCommand,
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const ROOT = resolve(new URL("..", import.meta.url).pathname);
 
 // Minimal .env loader (no dependency).
 const envFile = resolve(ROOT, ".env");
@@ -84,53 +81,61 @@ try {
 }
 
 step(2, "Setting the CORS rule for browser uploads/downloads");
-const rules = {
-  CORSRules: [
-    {
-      ID: "bareroots-portal",
-      AllowedOrigins: origins,
-      AllowedMethods: ["GET", "PUT", "HEAD"],
-      AllowedHeaders: ["*"],
-      ExposeHeaders: ["ETag", "x-amz-request-id"],
-      MaxAgeSeconds: 3600,
-    },
-  ],
-};
+/**
+ * Backblaze's console presets only cover its native download API. Browser
+ * uploads use the S3 API (PUT + preflight OPTIONS), which needs a rule that
+ * names s3_put / s3_get / s3_head — and Backblaze only accepts that rule
+ * through its native API. So: authorize → find bucketId → b2_update_bucket.
+ * Any origin is allowed on purpose: the bucket is private, so a file is still
+ * only reachable with a signed link, and the Netlify URL can change later
+ * without anyone touching this again.
+ */
+const nativeRules = [
+  {
+    corsRuleName: "bareroots-portal-s3",
+    allowedOrigins: ["*"],
+    allowedHeaders: ["*"],
+    allowedOperations: ["s3_put", "s3_get", "s3_head"],
+    exposeHeaders: ["etag", "x-amz-request-id"],
+    maxAgeSeconds: 3600,
+  },
+  {
+    corsRuleName: "bareroots-portal-native",
+    allowedOrigins: ["*"],
+    allowedHeaders: ["*"],
+    allowedOperations: ["b2_download_file_by_id", "b2_download_file_by_name", "b2_upload_file", "b2_upload_part"],
+    exposeHeaders: ["x-bz-content-sha1"],
+    maxAgeSeconds: 3600,
+  },
+];
 let corsSet = false;
 try {
-  await s3.send(new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: rules }));
-  const current = await s3.send(new GetBucketCorsCommand({ Bucket: bucket }));
-  ok(`CORS rule written (${current.CORSRules?.length ?? 0} rule(s) on bucket)`);
+  const basic = Buffer.from(`${keyId}:${appKey}`).toString("base64");
+  const authRes = await fetch("https://api.backblazeb2.com/b2api/v2/b2_authorize_account", { headers: { Authorization: `Basic ${basic}` } });
+  if (!authRes.ok) throw new Error(`b2_authorize_account ${authRes.status}: ${(await authRes.text()).slice(0, 200)}`);
+  const auth = await authRes.json();
+  const listRes = await fetch(`${auth.apiUrl}/b2api/v2/b2_list_buckets`, {
+    method: "POST",
+    headers: { Authorization: auth.authorizationToken, "content-type": "application/json" },
+    body: JSON.stringify({ accountId: auth.accountId, bucketName: bucket }),
+  });
+  if (!listRes.ok) throw new Error(`b2_list_buckets ${listRes.status}: ${(await listRes.text()).slice(0, 200)}`);
+  const found = (await listRes.json()).buckets?.[0];
+  if (!found) throw new Error(`bucket "${bucket}" not visible to this key`);
+  const updRes = await fetch(`${auth.apiUrl}/b2api/v2/b2_update_bucket`, {
+    method: "POST",
+    headers: { Authorization: auth.authorizationToken, "content-type": "application/json" },
+    body: JSON.stringify({ accountId: auth.accountId, bucketId: found.bucketId, corsRules: nativeRules }),
+  });
+  if (!updRes.ok) throw new Error(`b2_update_bucket ${updRes.status}: ${(await updRes.text()).slice(0, 300)}`);
+  const updated = await updRes.json();
+  ok(`CORS rules written via the Backblaze API (${updated.corsRules?.length ?? 0} rules: S3 put/get/head + native download)`);
   corsSet = true;
 } catch (err) {
-  if (/B2 Native CORS rules/i.test(String(err.message))) {
-    ok("CORS is already managed in the Backblaze console (a native rule exists) — nothing to do");
-    corsSet = true;
-  } else bad(`couldn't set CORS via the API: ${err.name}: ${err.message}`);
-  if (!corsSet) console.log(`
-     Set it by hand instead (takes a minute):
-       Backblaze → Buckets → ${bucket} → Bucket Settings → CORS Rules
-       → choose "Share everything in this bucket with every origin"
-         (fine for a private bucket — files are still only reachable with a signed link)
-       → or "Custom" and paste:
-
-${JSON.stringify(
-  [
-    {
-      corsRuleName: "bareroots-portal",
-      allowedOrigins: origins,
-      allowedHeaders: ["*"],
-      allowedOperations: ["s3_put", "s3_get", "s3_head"],
-      exposeHeaders: ["etag"],
-      maxAgeSeconds: 3600,
-    },
-  ],
-  null,
-  2,
-)
-  .split("\n")
-  .map((l) => "       " + l)
-  .join("\n")}
+  bad(`couldn't set CORS via the Backblaze API: ${err.message}`);
+  console.log(`
+     The key needs "writeBuckets" (a key created with access to ALL buckets has it;
+     a bucket-restricted key does not). Create such a key, put it in .env, and re-run.
 `);
 }
 
