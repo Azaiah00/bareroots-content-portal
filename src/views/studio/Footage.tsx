@@ -136,6 +136,24 @@ export const Footage = () => {
       setView({ asset: a, url });
     });
 
+  // Storage self-check: can browsers upload to the bucket? (CORS on Backblaze.)
+  const [cors, setCors] = useState<{ browserUploadsAllowed: boolean } | null | "error">(null);
+  useEffect(() => {
+    let alive = true;
+    api<{ browserUploadsAllowed: boolean }>("/api/admin/cors")
+      .then((r) => alive && setCors(r))
+      .catch(() => alive && setCors("error"));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const fixCors = () =>
+    run("cors", async () => {
+      const r = await api<{ browserUploadsAllowed: boolean }>("/api/admin/cors", { method: "POST", json: {} });
+      setCors(r);
+      toast(r.browserUploadsAllowed ? "Browser uploads are now allowed on the bucket." : "Backblaze accepted the request but uploads still look blocked — check the key's permissions.", r.browserUploadsAllowed ? "ok" : "error");
+    });
+
   const used = state?.storage.usedBytes ?? 0;
   const budget = state?.config.storageBudgetBytes ?? 10 * 1024 ** 3;
   const pct = Math.min(100, Math.round((used / budget) * 100));
@@ -187,6 +205,20 @@ export const Footage = () => {
           <Segmented value={kind} onChange={setKind} options={[{ value: "all", label: "All" }, { value: "video", label: "Video" }, { value: "image", label: "Photos" }]} />
         </div>
       </div>
+
+      {cors && cors !== "error" && !cors.browserUploadsAllowed ? (
+        <div className="card" style={{ marginBottom: "1rem", borderColor: "rgba(180,83,63,0.5)" }}>
+          <div className="card-body row row-between">
+            <span className="row small">
+              <Icon name="alert" style={{ width: 18, height: 18, color: "var(--alert-lift)" }} />
+              Uploads from the browser are blocked on the storage bucket (missing S3 CORS rule). Nobody can drop files off until this is fixed.
+            </span>
+            <Button size="sm" variant="gold" icon="refresh" busy={busy === "cors"} onClick={fixCors}>
+              Fix storage uploads
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {selected.size ? (
         <div className="card" style={{ position: "sticky", top: 8, zIndex: 20, marginBottom: "1rem", background: "var(--ink)" }}>
