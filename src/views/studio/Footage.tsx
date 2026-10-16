@@ -8,6 +8,7 @@ import { Icon } from "@/components/Icon";
 import { triggerDownload } from "@/lib/clipboard";
 import { bytes, fmtDateTime, plural, relative } from "@/lib/format";
 import { useReveal } from "@/lib/motion";
+import { groupRaw } from "@/lib/groups";
 
 /**
  * STUDIO · Footage
@@ -40,12 +41,7 @@ export const Footage = () => {
 
   const groups = useMemo(() => {
     const raw = (state?.raw ?? []).filter((r) => (status === "all" ? r.status !== "archived" : r.status === status)).filter((r) => (kind === "all" ? true : r.kind === kind));
-    const byBatch = new Map<string, RawAsset[]>();
-    for (const r of raw) {
-      if (!byBatch.has(r.batchId)) byBatch.set(r.batchId, []);
-      byBatch.get(r.batchId)!.push(r);
-    }
-    return (state?.batches ?? []).map((batch) => ({ batch, assets: byBatch.get(batch.id) || [] })).filter((g) => g.assets.length);
+    return groupRaw(state?.batches ?? [], raw).filter((g) => g.assets.length);
   }, [state, status, kind]);
 
   const visibleIds = groups.flatMap((g) => g.assets.map((a) => a.id));
@@ -196,7 +192,7 @@ export const Footage = () => {
             <span>Used</span>
           </div>
           <div className="stat">
-            <b>{state?.batches.length ?? 0}</b>
+            <b>{groupRaw(state?.batches ?? [], state?.raw ?? []).filter((g) => g.assets.some((a) => a.status !== "archived")).length}</b>
             <span>Drop-offs</span>
           </div>
         </div>

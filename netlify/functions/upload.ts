@@ -137,8 +137,13 @@ const complete = async (req: Request): Promise<Response> => {
       items.unshift(asset);
     });
     const batch = await mutateCollection<RawBatch, RawBatch | undefined>("batches", (items) => {
-      const bt = items.find((x) => x.id === parentId);
+      let bt = items.find((x) => x.id === parentId);
       if (bt) bt.count += 1;
+      else {
+        // The drop-off record is gone (deleted mid-upload, or an old tab). Never orphan a file.
+        bt = { id: parentId, note: "", createdBy: session.name, createdAt: now, count: 1 };
+        items.unshift(bt);
+      }
       return bt;
     });
     await logActivity(session.name, session.role, "raw.uploaded", `${session.name} dropped off ${kind === "video" ? "a video" : kind === "image" ? "a photo" : "a file"}${batch?.note ? ` — ${batch.note}` : ""}`, {

@@ -7,6 +7,7 @@ import { Button, Empty, Lightbox, MediaTile, useConfirm } from "@/components/ui"
 import { Icon } from "@/components/Icon";
 import { bytes, fmtDateTime, plural, relative } from "@/lib/format";
 import { useReveal } from "@/lib/motion";
+import { groupRaw } from "@/lib/groups";
 
 /**
  * CLIENT · Drop Off
@@ -58,7 +59,7 @@ export const DropOff = () => {
   };
 
   const ensureBatch = async (): Promise<string> => {
-    if (batchId) return batchId;
+    if (batchId && state?.batches.some((b) => b.id === batchId)) return batchId;
     setStarting(true);
     try {
       const { batch } = await api<{ batch: RawBatch }>("/api/raw/batches", { method: "POST", json: { note } });
@@ -109,13 +110,7 @@ export const DropOff = () => {
 
   const myBatches = useMemo(() => {
     if (!state) return [] as { batch: RawBatch; assets: RawAsset[] }[];
-    const byBatch = new Map<string, RawAsset[]>();
-    for (const r of state.raw) {
-      if (!byBatch.has(r.batchId)) byBatch.set(r.batchId, []);
-      byBatch.get(r.batchId)!.push(r);
-    }
-    return state.batches
-      .map((batch) => ({ batch, assets: byBatch.get(batch.id) || [] }))
+    return groupRaw(state.batches, state.raw)
       .filter((b) => b.assets.length || b.batch.id === batchId)
       .slice(0, 30);
   }, [state, batchId]);

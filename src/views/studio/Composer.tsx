@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Deliverable, DeliverableFile, DeliverableKind, InstagramFormat, Platform, PlatformPlan, RawAsset } from "@shared/types";
+import type { Deliverable, DeliverableFile, DeliverableKind, InstagramFormat, Platform, PlatformPlan } from "@shared/types";
 import { INSTAGRAM_FORMAT_LABEL, PLATFORM_LABEL } from "@shared/types";
 import { usePortal } from "@/lib/store";
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ import { DeliverableDetail } from "@/components/DeliverableDetail";
 import { Icon } from "@/components/Icon";
 import { bytes, fmtDateTime, fromLocalInput, relative, toLocalInput } from "@/lib/format";
 import { CAPTION_LIMITS, PLATFORM_TIPS, suggestTime } from "@/lib/schedule";
+import { groupRaw } from "@/lib/groups";
 
 /**
  * STUDIO · Composer
@@ -511,13 +512,7 @@ const SourcePicker = ({ selected, onClose, onSave }: { selected: string[]; onClo
   const { state, preview } = usePortal();
   const [ids, setIds] = useState<Set<string>>(new Set(selected));
   const groups = useMemo(() => {
-    const byBatch = new Map<string, RawAsset[]>();
-    for (const r of state?.raw ?? []) {
-      if (r.status === "archived") continue;
-      if (!byBatch.has(r.batchId)) byBatch.set(r.batchId, []);
-      byBatch.get(r.batchId)!.push(r);
-    }
-    return (state?.batches ?? []).map((b) => ({ batch: b, assets: byBatch.get(b.id) || [] })).filter((g) => g.assets.length);
+    return groupRaw(state?.batches ?? [], (state?.raw ?? []).filter((r) => r.status !== "archived")).filter((g) => g.assets.length);
   }, [state]);
   return (
     <Modal
