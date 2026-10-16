@@ -1326,9 +1326,18 @@ button {
   text-align: center;
 }
 .gate-card .seal {
+  width: 118px;
+  height: 118px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, rgba(201, 161, 90, 0.18), transparent 70%);
+  filter: drop-shadow(0 0 22px rgba(201, 161, 90, 0.28));
+}
+.gate-card .seal img {
   width: 110px;
   height: 110px;
-  margin: 0 auto;
 }
 .pin-row {
   display: flex;

@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { usePortal } from "@/lib/store";
 import { Button, GoldMotes } from "@/components/ui";
-import { RootMark } from "@/components/Icon";
 import { useMounted } from "@/lib/motion";
 import { ApiError } from "@/lib/api";
 
@@ -71,8 +70,8 @@ export const Gate = () => {
     <div className="gate">
       <GoldMotes />
       <form className="gate-card" onSubmit={submit} data-reveal={mounted ? "in" : ""}>
-        <div className="seal" style={{ color: "var(--gold)" }}>
-          <RootMark drawn={mounted} />
+        <div className="seal">
+          <img src="/img/logo-br.png" alt="Bare Roots" width={110} height={110} decoding="async" />
         </div>
         <div>
           <span className="eyebrow" style={{ justifyContent: "center" }}>
