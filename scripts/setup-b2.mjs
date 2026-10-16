@@ -103,8 +103,11 @@ try {
   ok(`CORS rule written (${current.CORSRules?.length ?? 0} rule(s) on bucket)`);
   corsSet = true;
 } catch (err) {
-  bad(`couldn't set CORS via the API: ${err.name}: ${err.message}`);
-  console.log(`
+  if (/B2 Native CORS rules/i.test(String(err.message))) {
+    ok("CORS is already managed in the Backblaze console (a native rule exists) — nothing to do");
+    corsSet = true;
+  } else bad(`couldn't set CORS via the API: ${err.name}: ${err.message}`);
+  if (!corsSet) console.log(`
      Set it by hand instead (takes a minute):
        Backblaze → Buckets → ${bucket} → Bucket Settings → CORS Rules
        → choose "Share everything in this bucket with every origin"
