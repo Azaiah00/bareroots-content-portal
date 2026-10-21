@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { FileRole, PresignRequest } from "@shared/types";
-import { describeUploadError, makeJob, runUpload, type UploadJob } from "@/lib/upload";
+import { describeUploadError, makeJob, reportUploadProblem, runUpload, type UploadJob } from "@/lib/upload";
 import { bytes } from "@/lib/format";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
@@ -8,8 +8,9 @@ import { usePortal } from "@/lib/store";
 
 /**
  * Queue + drop zone + progress list, shared by every place a file can enter
- * the portal. Two uploads run at a time; each retries three times; the queue
- * survives route changes while the component is mounted.
+ * the portal. Two uploads run at a time; big files go up in resumable parts
+ * (see lib/upload); the screen is kept awake while anything is sending, and a
+ * failure is reported to the studio's Activity feed with the device it was on.
  */
 
 const CONCURRENCY = 2;
@@ -35,7 +36,11 @@ export const useUploader = (scope: PresignRequest["scope"]) => {
       runUpload({ ...next }, (patch) => update(next.id, patch))
         .catch((err) => {
           if (String(err?.message) === "cancelled") update(next.id, { status: "cancelled", error: undefined, xhr: undefined });
-          else update(next.id, { status: "error", error: describeUploadError(err), xhr: undefined });
+          else {
+            const msg = describeUploadError(err);
+            update(next.id, { status: "error", error: msg, xhr: undefined });
+            reportUploadProblem(next, msg);
+          }
         })
         .finally(() => {
           running.current -= 1;
@@ -110,6 +115,33 @@ export const useUploader = (scope: PresignRequest["scope"]) => {
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [jobs]);
+
+  // Keep the phone's screen awake while anything is sending — a locked iPhone pauses the page.
+  const sending = jobs.some((j) => ["queued", "preparing", "uploading", "registering"].includes(j.status));
+  useEffect(() => {
+    if (!sending) return;
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } };
+    if (!nav.wakeLock) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    let alive = true;
+    const grab = () => {
+      if (document.visibilityState !== "visible") return;
+      nav.wakeLock!
+        .request("screen")
+        .then((l) => {
+          if (alive) lock = l;
+          else l.release().catch(() => {});
+        })
+        .catch(() => {});
+    };
+    grab();
+    document.addEventListener("visibilitychange", grab);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", grab);
+      lock?.release().catch(() => {});
+    };
+  }, [sending]);
 
   const active = jobs.filter((j) => ["queued", "preparing", "uploading", "registering"].includes(j.status));
   const done = jobs.filter((j) => j.status === "done");
@@ -194,8 +226,15 @@ const statusText = (j: UploadJob): string => {
 
 export const UploadList = ({ jobs, onRetry, onCancel, onRemove }: { jobs: UploadJob[]; onRetry: (id: string) => void; onCancel: (id: string) => void; onRemove: (id: string) => void }) => {
   if (!jobs.length) return null;
+  const sending = jobs.some((j) => ["queued", "preparing", "uploading", "registering"].includes(j.status));
   return (
     <div>
+      {sending ? (
+        <p className="xs muted" role="status" style={{ margin: "0 0 0.6rem", display: "flex", gap: 8, alignItems: "center" }}>
+          <Icon name="alert" style={{ width: 14, height: 14, flex: "none", color: "var(--gold)" }} />
+          Keep this screen open until each file says Sent. If anything stops, tap Retry — it carries on from where it left off.
+        </p>
+      ) : null}
       {jobs.map((j) => (
         <div className="uprow" key={j.id}>
           <div className="thumb">{j.previewUrl ? <img src={j.previewUrl} alt="" /> : <Icon name={j.kind === "video" ? "film" : j.kind === "audio" ? "audio" : "file"} />}</div>

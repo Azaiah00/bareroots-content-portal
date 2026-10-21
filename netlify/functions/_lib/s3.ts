@@ -18,6 +18,10 @@ import {
   DeleteObjectsCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env";
@@ -124,4 +128,49 @@ export const prefixBytes = async (prefix: string): Promise<number> => {
     token = r.IsTruncated ? r.NextContinuationToken : undefined;
   } while (token);
   return total;
+};
+
+/* ── Multipart (resumable) uploads ──────────────────────────────────────────
+ * Phones on cellular drop long single-request uploads (screen locks, app
+ * switches, a dead zone in the parking lot). Big files go up in parts instead:
+ * each part is its own small PUT that can be retried, and the browser keeps
+ * the upload id so a reload picks up where it stopped. */
+
+const PART_TTL = 60 * 60 * 12; // 12 hours per signed part URL
+
+export const startMultipart = async (key: string, mime: string): Promise<string> => {
+  const r = await s3().send(
+    new CreateMultipartUploadCommand({ Bucket: bucket(), Key: key, ContentType: mime || "application/octet-stream" }),
+  );
+  if (!r.UploadId) throw new HttpError(502, "Storage didn't start the upload. Please try again.");
+  return r.UploadId;
+};
+
+export const signParts = async (key: string, uploadId: string, partNumbers: number[]) =>
+  Promise.all(
+    partNumbers.map(async (n) => ({
+      n,
+      url: await getSignedUrl(s3(), new UploadPartCommand({ Bucket: bucket(), Key: key, UploadId: uploadId, PartNumber: n }), {
+        expiresIn: PART_TTL,
+      }),
+    })),
+  );
+
+export const finishMultipart = async (key: string, uploadId: string, parts: { n: number; etag: string }[]): Promise<void> => {
+  await s3().send(
+    new CompleteMultipartUploadCommand({
+      Bucket: bucket(),
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: { Parts: parts.sort((a, b) => a.n - b.n).map((p) => ({ PartNumber: p.n, ETag: p.etag })) },
+    }),
+  );
+};
+
+export const abortMultipart = async (key: string, uploadId: string): Promise<void> => {
+  try {
+    await s3().send(new AbortMultipartUploadCommand({ Bucket: bucket(), Key: key, UploadId: uploadId }));
+  } catch {
+    /* already gone */
+  }
 };

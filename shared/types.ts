@@ -195,7 +195,8 @@ export type ActivityType =
   | "idea.created"
   | "idea.commented"
   | "idea.status"
-  | "session.joined";
+  | "session.joined"
+  | "upload.problem";
 
 export interface Activity {
   id: string;

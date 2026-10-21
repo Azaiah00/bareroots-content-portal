@@ -134,11 +134,18 @@ scripts/dev-local.mjs       the no-accounts dev server
 - **Netlify Blobs** is included on all plans.
 - Single-file upload cap is 5 GB on B2's single-request API (`MAX_UPLOAD_MB`, default 4000). Longer footage: trim or split.
 
+## 4b. Big uploads from phones (added Oct 20, 2026)
+
+Files over 20 MB go up as **resumable multipart uploads** (`/api/upload/mp-start|mp-sign|mp-finish|mp-abort`): 8 MB pieces, three at a time, each retried up to ten times with back-off, paused while the page is hidden or offline and resumed when it's back. Finished pieces are remembered on the device, so if Safari reloads the page, picking the same file again carries on from where it stopped. The screen is kept awake (Wake Lock) while anything is sending, and the drop-off shows "Keep this screen open until each file says Sent".
+
+Any failed upload is reported to the studio's **Activity** feed ("Upload problem for ...", with file size, the error and the device). Clients never see these entries.
+
+Bucket CORS must expose the `ETag` header (it does: `exposeHeaders: ["etag", ...]` in `/api/admin/cors` and `setup-b2`).
+
 ## 5. Later (not built, on purpose)
 
 - Kie.ai generation hooks (studio-side) — add when the time comes.
 - Email/SMS notifications — the activity feed covers it for now; Resend's free tier is a 20-minute add.
-- Multipart resumable uploads if anyone regularly sends >2 GB files on bad Wi-Fi.
 - More clients: the whole thing is per-client by design — fork the repo, new bucket, new PINs, new logo.
 
 ---

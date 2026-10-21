@@ -16,13 +16,18 @@ import { requireSession } from "./_lib/auth";
 import { env } from "./_lib/env";
 import { fail, handle, HttpError, isoNow, json, readJson, safeFilename, str } from "./_lib/http";
 import { id } from "./_lib/ids";
-import { headObject, presignPut } from "./_lib/s3";
+import { abortMultipart, finishMultipart, headObject, presignPut, signParts, startMultipart } from "./_lib/s3";
 import { mutateCollection, readCollection } from "./_lib/store";
 import { logActivity } from "./_lib/activity";
 
 /**
- * POST /api/upload/presign   → a one-hour URL the browser PUTs the file to.
+ * POST /api/upload/presign   → a one-hour URL the browser PUTs the file to (small files).
+ * POST /api/upload/mp-start  → start a resumable multipart upload (big files).
+ * POST /api/upload/mp-sign   → signed URLs for the next parts.
+ * POST /api/upload/mp-finish → stitch the parts into the final object.
+ * POST /api/upload/mp-abort  → throw a half-finished upload away.
  * POST /api/upload/complete  → registers the uploaded object in the right collection.
+ * POST /api/upload/report    → the browser reports a failed upload (studio sees it in Activity).
  *
  * Key layout (one bucket, three top-level folders, never mixed):
  *   raw/<batchId>/<fileId>-<name>            client footage
@@ -201,11 +206,118 @@ const complete = async (req: Request): Promise<Response> => {
   return json({ attachment: att, idea });
 };
 
+/* ── Resumable multipart uploads ──────────────────────────────────────── */
+
+export const PART_SIZE = 8 * 1024 * 1024;
+const MAX_PARTS = 10000;
+
+const scopeCheck = (session: { role: string }, scope: unknown): PresignRequest["scope"] => {
+  if (scope !== "raw" && scope !== "deliverable" && scope !== "idea") throw new HttpError(400, "Unknown upload scope");
+  if (scope === "deliverable" && session.role !== "studio") throw new HttpError(403, "Only the studio can add finished content.");
+  return scope;
+};
+
+const keyCheck = (scope: PresignRequest["scope"], parentId: string, key: string) => {
+  if (!key.startsWith(`${ALLOWED_PREFIX[scope]}${parentId}/`) || key.includes("..")) throw new HttpError(400, "Key does not match scope");
+};
+
+const mpStart = async (req: Request): Promise<Response> => {
+  const session = requireSession(req);
+  const body = await readJson<Partial<PresignRequest>>(req);
+  const scope = scopeCheck(session, body.scope);
+  const parentId = str(body.parentId, 64);
+  if (!/^[A-Za-z0-9_-]{4,64}$/.test(parentId)) throw new HttpError(400, "Missing parent id");
+  const name = safeFilename(str(body.name, 200) || "file");
+  const mime = str(body.mime, 120) || "application/octet-stream";
+  const size = Number(body.size);
+  if (!Number.isFinite(size) || size <= 0) throw new HttpError(400, "Missing file size");
+  if (size > env.maxUploadBytes()) {
+    const gb = (env.maxUploadBytes() / 1024 ** 3).toFixed(1);
+    throw new HttpError(413, `That file is larger than the ${gb} GB limit. Please trim it or send it in parts.`, "too_large");
+  }
+  const partSize = Math.max(PART_SIZE, Math.ceil(size / MAX_PARTS));
+  const partCount = Math.ceil(size / partSize);
+  const key = `${ALLOWED_PREFIX[scope]}${parentId}/${id()}-${name}`;
+  const uploadId = await startMultipart(key, mime);
+  return json({ key, uploadId, partSize, partCount });
+};
+
+const mpSign = async (req: Request): Promise<Response> => {
+  const session = requireSession(req);
+  const b = await readJson<Record<string, unknown>>(req);
+  const scope = scopeCheck(session, b.scope);
+  const parentId = str(b.parentId, 64);
+  const key = str(b.key, 600);
+  const uploadId = str(b.uploadId, 400);
+  keyCheck(scope, parentId, key);
+  if (!uploadId) throw new HttpError(400, "Missing upload id");
+  const parts = (Array.isArray(b.parts) ? b.parts : [])
+    .map((n) => Math.floor(Number(n)))
+    .filter((n) => Number.isFinite(n) && n >= 1 && n <= MAX_PARTS)
+    .slice(0, 200);
+  if (!parts.length) throw new HttpError(400, "No parts requested");
+  return json({ urls: await signParts(key, uploadId, parts) });
+};
+
+const mpFinish = async (req: Request): Promise<Response> => {
+  const session = requireSession(req);
+  const b = await readJson<Record<string, unknown>>(req);
+  const scope = scopeCheck(session, b.scope);
+  const parentId = str(b.parentId, 64);
+  const key = str(b.key, 600);
+  const uploadId = str(b.uploadId, 400);
+  keyCheck(scope, parentId, key);
+  const parts = (Array.isArray(b.parts) ? b.parts : [])
+    .map((p: any) => ({ n: Math.floor(Number(p?.n)), etag: str(p?.etag, 200) }))
+    .filter((p) => p.n >= 1 && p.etag);
+  if (!parts.length) throw new HttpError(400, "No parts to finish");
+  try {
+    await finishMultipart(key, uploadId, parts);
+  } catch (err: any) {
+    // A retried finish after a success reports NoSuchUpload; the object being there is what matters.
+    if (!(await headObject(key))) throw new HttpError(409, `Storage couldn't assemble the file (${err?.name || "error"}). Please try again.`, "assemble_failed");
+  }
+  return json({ ok: true, key });
+};
+
+const mpAbort = async (req: Request): Promise<Response> => {
+  const session = requireSession(req);
+  const b = await readJson<Record<string, unknown>>(req);
+  const scope = scopeCheck(session, b.scope);
+  const parentId = str(b.parentId, 64);
+  const key = str(b.key, 600);
+  keyCheck(scope, parentId, key);
+  await abortMultipart(key, str(b.uploadId, 400));
+  return json({ ok: true });
+};
+
+/** A failed upload, reported by the browser so the studio can see what went wrong on whose phone. */
+const report = async (req: Request): Promise<Response> => {
+  const session = requireSession(req);
+  const b = await readJson<Record<string, unknown>>(req);
+  const name = str(b.name, 120);
+  const mb = Math.round(Number(b.size) / 1e5) / 10;
+  const msg = str(b.message, 300);
+  const device = str(b.device, 120);
+  await logActivity(
+    session.name,
+    session.role,
+    "upload.problem",
+    `Upload problem for ${session.name}: ${name || "a file"}${Number.isFinite(mb) ? ` (${mb} MB)` : ""} — ${msg || "unknown error"}${device ? ` · ${device}` : ""}`,
+  ).catch(() => {});
+  return json({ ok: true });
+};
+
 export default handle(async (req, ctx) => {
   if (req.method !== "POST") return fail(405, "Method not allowed");
   const action = (ctx?.params?.action as string) || new URL(req.url).pathname.split("/").pop();
   if (action === "presign") return presign(req);
   if (action === "complete") return complete(req);
+  if (action === "mp-start") return mpStart(req);
+  if (action === "mp-sign") return mpSign(req);
+  if (action === "mp-finish") return mpFinish(req);
+  if (action === "mp-abort") return mpAbort(req);
+  if (action === "report") return report(req);
   // Lightweight sanity endpoint used by the uploader to confirm the batch exists.
   if (action === "ping") {
     requireSession(req);

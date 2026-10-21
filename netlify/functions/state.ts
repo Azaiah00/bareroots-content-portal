@@ -110,7 +110,8 @@ export default handle(async (req) => {
     raw: visibleRaw,
     deliverables: visibleDeliverables,
     ideas,
-    activity: activity.slice(0, 200),
+    // Upload problem reports are diagnostics for the studio, not news for the client.
+    activity: (isStudio ? activity : activity.filter((a) => a.type !== "upload.problem")).slice(0, 200),
     previews,
     storage: { usedBytes: rawBytes + deliverableBytes + ideaBytes, rawBytes, deliverableBytes, ideaBytes },
     serverTime: isoNow(),
