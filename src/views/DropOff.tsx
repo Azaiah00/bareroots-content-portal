@@ -16,6 +16,41 @@ import { groupRaw } from "@/lib/groups";
  * newest first, so they never wonder whether it went through.
  */
 
+/** Set while a selection is being handed to the queue; if the page dies in between, the next visit knows. */
+const PICK_MARK = "br-pick-pending";
+const IOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+const markPick = (value: { count: number; bytes: number } | null) => {
+  try {
+    if (value) localStorage.setItem(PICK_MARK, JSON.stringify(value));
+    else localStorage.removeItem(PICK_MARK);
+  } catch {
+    /* private mode — the reload notice just won't show */
+  }
+};
+const readPick = (): { count: number; bytes: number } | null => {
+  try {
+    const raw = localStorage.getItem(PICK_MARK);
+    return raw ? (JSON.parse(raw) as { count: number; bytes: number }) : null;
+  } catch {
+    return null;
+  }
+};
+
+const deviceLabel = (): string => {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad/.test(ua)) return `iPhone/iPad ${(ua.match(/OS (\d+[_\d]*)/)?.[1] || "").replace(/_/g, ".")} ${/CriOS/.test(ua) ? "Chrome" : "Safari"}`;
+  if (/Android/.test(ua)) return "Android";
+  if (/Mac/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows";
+  return "browser";
+};
+
+/** Tell the studio's Activity feed about a failure that happened before any file reached the uploader. */
+const reportProblem = (name: string, size: number, message: string) => {
+  api("/api/upload/report", { method: "POST", json: { name, size, type: "", message, device: deviceLabel() } }).catch(() => {});
+};
+
 export const DropOff = () => {
   const { state, refresh, session, preview, toast } = usePortal();
   const uploader = useUploader("raw");
@@ -27,6 +62,18 @@ export const DropOff = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const { confirm, element: confirmEl } = useConfirm();
   const ref = useReveal<HTMLDivElement>([state?.batches.length]);
+  const [picking, setPicking] = useState<{ count: number; bytes: number } | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [lostPick, setLostPick] = useState<{ count: number; bytes: number } | null>(null);
+
+  // If the last selection was still being handed over when the page went away, say so, and tell the studio once.
+  useEffect(() => {
+    const p = readPick();
+    if (!p) return;
+    markPick(null);
+    reportProblem(`${p.count} file${p.count === 1 ? "" : "s"} selected`, p.bytes, "The page reloaded before the files reached the upload queue (likely the phone running low on memory)");
+    setLostPick(p);
+  }, []);
 
   const deleteAsset = async (asset: RawAsset) => {
     if (!(await confirm(`Delete ${asset.label || asset.name}?`, { body: "It's removed from storage for good. The studio won't be able to use it.", action: "Delete", danger: true }))) return;
@@ -71,11 +118,23 @@ export const DropOff = () => {
   };
 
   const onFiles = async (files: File[]) => {
+    const total = files.reduce((a, f) => a + f.size, 0);
+    const summary = { count: files.length, bytes: total };
+    setLostPick(null);
+    setPickError(null);
+    setPicking(summary);
+    markPick(summary);
     try {
       const id = await ensureBatch();
-      uploader.add(files, id);
+      const accepted = uploader.add(files, id);
+      if (!accepted.length) setPickError("None of those files could be added. Check the size note above, or try a shorter clip.");
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Couldn't start the drop-off.", "error");
+      const msg = err instanceof Error ? err.message : "Couldn't start the drop-off.";
+      setPickError(msg);
+      reportProblem(`${files.length} file${files.length === 1 ? "" : "s"} selected`, total, msg);
+    } finally {
+      markPick(null);
+      setPicking(null);
     }
   };
 
@@ -152,7 +211,43 @@ export const DropOff = () => {
               maxLength={300}
             />
           </div>
-          <div data-tour="drop-zone"><DropZone onFiles={onFiles} title={starting ? "One moment…" : "Tap to add photos & videos"} /></div>
+          <div data-tour="drop-zone">
+            <DropZone
+              onFiles={onFiles}
+              multiple={!IOS}
+              title={starting ? "One moment…" : "Tap to add photos & videos"}
+              hint={IOS ? "On iPhone, add one video at a time for the most reliable upload. Big files are fine — they go straight to secure storage." : undefined}
+            />
+          </div>
+          {picking ? (
+            <p className="small" role="status" style={{ margin: 0 }}>
+              Got {plural(picking.count, "file")} ({bytes(picking.bytes)}). Preparing the upload…
+            </p>
+          ) : null}
+          {pickError ? (
+            <div className="card" role="alert">
+              <div className="card-body row row-between" style={{ gap: 12 }}>
+                <p className="small" style={{ margin: 0, color: "var(--alert-lift)" }}>
+                  That didn&apos;t go through: {pickError} The studio has been told. Try again with one file.
+                </p>
+                <Button size="xs" onClick={() => setPickError(null)}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {lostPick ? (
+            <div className="card" role="alert">
+              <div className="card-body row row-between" style={{ gap: 12 }}>
+                <p className="small" style={{ margin: 0 }}>
+                  Your last selection didn&apos;t reach the upload queue — the page reloaded while it was being prepared. The studio has been told. Please add one file at a time.
+                </p>
+                <Button size="xs" onClick={() => setLostPick(null)}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {uploader.jobs.length ? (
             <div className="card">
               <div className="card-body">

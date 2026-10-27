@@ -24,6 +24,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 // fileURLToPath keeps Windows paths correct (pathname alone yields C:\C:\...).
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const API_PORT = Number(process.env.API_PORT || 8888);
+const VITE_PORT = Number(process.env.VITE_DEV_PORT || 5173);
 const S3_PORT = Number(process.env.S3_PORT || 4569);
 const BUCKET = "local-portal";
 
@@ -108,7 +109,12 @@ api.listen(API_PORT, () => console.log(`  functions  → http://localhost:${API_
 
 // ── 3. Vite ───────────────────────────────────────────────────────────
 if (!process.env.NO_VITE) {
-  const vite = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vite"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
+  const vite = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vite", "--port", String(VITE_PORT)], {
+    cwd: ROOT,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+    env: { ...process.env, API_PORT: String(API_PORT), VITE_DEV_PORT: String(VITE_PORT) },
+  });
   const stop = () => {
     vite.kill();
     s3.close();
