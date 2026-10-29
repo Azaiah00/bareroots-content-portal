@@ -3,7 +3,7 @@ import type { RawAsset, RawBatch, RawStatus } from "../../shared/types";
 import { requireSession } from "./_lib/auth";
 import { fail, handle, HttpError, isoNow, json, readJson, str, strList } from "./_lib/http";
 import { id } from "./_lib/ids";
-import { deleteObjects, presignGet } from "./_lib/s3";
+import { deleteObjects, headObject, presignGet } from "./_lib/s3";
 import { mutateCollection, readCollection } from "./_lib/store";
 import { logActivity } from "./_lib/activity";
 
@@ -115,10 +115,33 @@ export default handle(async (req) => {
   }
 
   if (req.method === "PATCH") {
-    const body = await readJson<{ label?: string; status?: RawStatus; usedIn?: string[] }>(req);
+    const body = await readJson<{ label?: string; status?: RawStatus; usedIn?: string[]; posterKey?: string; width?: number; height?: number; duration?: number }>(req);
+    // The studio can attach a thumbnail it made from the file (client uploads don't make one).
+    let thumb: { posterKey: string; width?: number; height?: number; duration?: number } | undefined;
+    if (body.posterKey !== undefined) {
+      if (!isStudio) throw new HttpError(403, "Only the studio can add thumbnails.");
+      const current = (await readCollection<RawAsset>("raw")).find((x) => x.id === assetId);
+      if (!current) return fail(404, "File not found");
+      const pk = str(body.posterKey, 600);
+      if (pk !== `${current.key}.poster.jpg` || !(await headObject(pk))) throw new HttpError(409, "The thumbnail didn't finish uploading. Please try again.", "not_uploaded");
+      const dim = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : undefined);
+      const dur = Number(body.duration);
+      thumb = {
+        posterKey: pk,
+        width: dim(body.width),
+        height: dim(body.height),
+        duration: Number.isFinite(dur) && dur > 0 ? Math.round(dur * 10) / 10 : undefined,
+      };
+    }
     const asset = await mutateCollection<RawAsset, RawAsset | undefined>("raw", (items) => {
       const a = items.find((x) => x.id === assetId);
       if (!a) return undefined;
+      if (thumb) {
+        a.posterKey = thumb.posterKey;
+        if (thumb.width) a.width = thumb.width;
+        if (thumb.height) a.height = thumb.height;
+        if (thumb.duration) a.duration = thumb.duration;
+      }
       if (body.label !== undefined) a.label = str(body.label, 140) || undefined;
       if (body.status !== undefined) {
         if (!isStudio) throw new HttpError(403, "Only the studio can change footage status.");

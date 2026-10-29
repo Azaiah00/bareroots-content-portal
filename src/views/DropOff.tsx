@@ -18,7 +18,6 @@ import { groupRaw } from "@/lib/groups";
 
 /** Set while a selection is being handed to the queue; if the page dies in between, the next visit knows. */
 const PICK_MARK = "br-pick-pending";
-const IOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
 
 const markPick = (value: { count: number; bytes: number } | null) => {
   try {
@@ -199,24 +198,10 @@ export const DropOff = () => {
 
       <section className="section" data-reveal="" style={{ "--reveal-delay": "80ms" } as React.CSSProperties}>
         <div className="stack" style={{ gap: "1rem" }}>
-          <div className="field" data-tour="drop-note">
-            <label htmlFor="note">What is this footage? (optional)</label>
-            <input
-              id="note"
-              className="input"
-              placeholder="e.g. Sabrina's micro loc retightening, Tues — plus a few DOPE HAIR product shots"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              onBlur={saveNote}
-              maxLength={300}
-            />
-          </div>
           <div data-tour="drop-zone">
             <DropZone
               onFiles={onFiles}
-              multiple={!IOS}
               title={starting ? "One moment…" : "Tap to add photos & videos"}
-              hint={IOS ? "On iPhone, add one video at a time for the most reliable upload. Big files are fine — they go straight to secure storage." : undefined}
             />
           </div>
           {picking ? (
@@ -271,6 +256,22 @@ export const DropOff = () => {
               </div>
             </div>
           ) : null}
+          <div className="field" data-tour="drop-note">
+            <label htmlFor="note">Notes about these files (optional)</label>
+            <input
+              id="note"
+              className="input"
+              placeholder="e.g. Sabrina's micro loc retightening, Tues — plus a few DOPE HAIR product shots"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onBlur={saveNote}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveNote();
+              }}
+              maxLength={300}
+            />
+            <span className="xs muted">Add your notes after the files upload. They're saved when you tap away.</span>
+          </div>
           <p className="xs muted">
             Tips: film vertical (9:16) when you can · keep the original quality, don't send screen recordings · a 10-second clip of a transformation beats a 3-minute one · HEIC photos and .MOV videos are fine.
           </p>

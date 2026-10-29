@@ -13,13 +13,16 @@ import { usePortal } from "@/lib/store";
  * failure is reported to the studio's Activity feed with the device it was on.
  */
 
-const CONCURRENCY = 2;
+// iPhone Safari runs out of memory when several big videos are processed at once, so it uploads one file at a time.
+const IOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
+const CONCURRENCY = IOS ? 1 : 2;
 
 export const useUploader = (scope: PresignRequest["scope"]) => {
   const [jobs, setJobs] = useState<UploadJob[]>([]);
   const jobsRef = useRef<UploadJob[]>([]);
   const running = useRef(0);
-  const { state, toast } = usePortal();
+  const { state, toast, session } = usePortal();
+  const skipPoster = session?.role === "client";
   const maxBytes = state?.config.maxUploadBytes ?? 4000 * 1024 * 1024;
 
   const update = useCallback((id: string, patch: Partial<UploadJob>) => {
@@ -62,7 +65,7 @@ export const useUploader = (scope: PresignRequest["scope"]) => {
           toast(`"${f.name}" is empty.`, "error");
           continue;
         }
-        accepted.push(makeJob(f, scope, parentId, extra));
+        accepted.push(makeJob(f, scope, parentId, { ...extra, skipPoster }));
       }
       if (!accepted.length) return [];
       jobsRef.current = [...jobsRef.current, ...accepted];
@@ -70,7 +73,7 @@ export const useUploader = (scope: PresignRequest["scope"]) => {
       pump();
       return accepted;
     },
-    [scope, maxBytes, pump, toast],
+    [scope, maxBytes, pump, toast, skipPoster],
   );
 
   const retry = useCallback(

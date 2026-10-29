@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RawAsset, RawBatch } from "@shared/types";
+import type { PresignResponse, RawAsset, RawBatch } from "@shared/types";
 import { usePortal } from "@/lib/store";
 import { api } from "@/lib/api";
+import { probeFile, putWithProgress } from "@/lib/upload";
 import { useRoute } from "@/lib/router";
 import { Button, Empty, Lightbox, MediaTile, Segmented, useConfirm } from "@/components/ui";
 import { Icon } from "@/components/Icon";
@@ -20,6 +21,27 @@ import { groupRaw } from "@/lib/groups";
 type StatusFilter = "all" | "new" | "used" | "archived";
 type KindFilter = "all" | "video" | "image";
 
+/**
+ * Client drop-offs skip the browser-side thumbnail (the heavy step on a phone), so this
+ * computer makes them: it reads each file, draws the poster, and saves it to the file.
+ */
+const thumbWork = { running: false, tried: new Set<string>() };
+
+const makeThumbnail = async (a: RawAsset) => {
+  const { url } = await api<{ url: string }>(`/api/raw/${a.id}/play`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Couldn't read ${a.name} (${res.status}).`);
+  const file = new File([await res.blob()], a.name, { type: a.mime });
+  const probe = await probeFile(file, a.kind);
+  if (!probe.poster) return;
+  const p = await api<PresignResponse>("/api/upload/presign", {
+    method: "POST",
+    json: { scope: "raw", parentId: a.batchId, name: "poster.jpg", mime: "image/jpeg", size: probe.poster.size, poster: true, forKey: a.key },
+  });
+  await putWithProgress(p.url, p.headers, probe.poster);
+  await api(`/api/raw/${a.id}`, { method: "PATCH", json: { posterKey: p.key, width: probe.width, height: probe.height, duration: probe.duration } });
+};
+
 export const Footage = () => {
   const { state, preview, toast, refresh, patchRaw } = usePortal();
   const route = useRoute();
@@ -32,6 +54,26 @@ export const Footage = () => {
   const { confirm, element: confirmEl } = useConfirm();
   const ref = useReveal<HTMLDivElement>([state?.raw.length, status, kind]);
   const focusBatch = route.params.get("b");
+
+  // Make thumbnails for any client file that doesn't have one yet, one at a time.
+  useEffect(() => {
+    if (thumbWork.running || !state) return;
+    const todo = state.raw.filter((r) => r.status !== "archived" && !r.posterKey && !thumbWork.tried.has(r.id));
+    if (!todo.length) return;
+    thumbWork.running = true;
+    (async () => {
+      for (const a of todo) {
+        thumbWork.tried.add(a.id);
+        try {
+          await makeThumbnail(a);
+        } catch {
+          /* stays without a thumbnail; it is tried again on the next visit */
+        }
+      }
+      thumbWork.running = false;
+      refresh();
+    })();
+  }, [state?.raw, refresh]);
 
   useEffect(() => {
     if (!focusBatch) return;

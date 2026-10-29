@@ -33,6 +33,8 @@ export interface UploadJob {
   result?: unknown;
   xhr?: XMLHttpRequest;
   attempts: number;
+  /** Clients don't need thumbnails (the studio makes them its own way), so their uploads skip the browser-side poster. */
+  skipPoster?: boolean;
 }
 
 export interface Probe {
@@ -148,13 +150,20 @@ const probeVideo = (file: File): Promise<Probe> =>
     v.src = url;
   });
 
+const IOS_DEVICE = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
+/** On iPhone, decoding a big video just to draw a thumbnail can exhaust Safari's memory and reload the page. */
+const IOS_POSTER_LIMIT = 50 * 1024 * 1024;
+
 export const probeFile = async (file: File, kind: MediaKind): Promise<Probe> => {
   if (kind === "image") return probeImage(file);
-  if (kind === "video") return probeVideo(file);
+  if (kind === "video") {
+    if (IOS_DEVICE && file.size > IOS_POSTER_LIMIT) return {};
+    return probeVideo(file);
+  }
   return {};
 };
 
-const putWithProgress = (
+export const putWithProgress = (
   url: string,
   headers: Record<string, string>,
   body: Blob,
@@ -387,7 +396,7 @@ const runMultipart = async (job: UploadJob, update: (patch: Partial<UploadJob>) 
 
 export const runUpload = async (job: UploadJob, update: (patch: Partial<UploadJob>) => void): Promise<unknown> => {
   update({ status: "preparing", progress: 0, loaded: 0, error: undefined });
-  const probe = await probeFile(job.file, job.kind);
+  const probe: Probe = job.skipPoster ? {} : await probeFile(job.file, job.kind);
 
   let key: string;
   let parentId = job.parentId;
