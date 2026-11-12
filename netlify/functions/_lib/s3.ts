@@ -1,14 +1,15 @@
 /**
- * Backblaze B2 via its S3-compatible API.
+ * File storage through the S3 protocol: Supabase Storage (STORAGE_* variables)
+ * or, before the move, Backblaze B2 (B2_* variables). See env.storage().
  *
  * Browser uploads and downloads never pass through Netlify: the function hands
- * out a presigned URL and the browser talks to B2 directly, so a 2 GB clip
+ * out a presigned URL and the browser talks to storage directly, so a 2 GB clip
  * costs Netlify nothing and never hits a function payload limit.
  *
- * Two B2 gotchas are handled here:
- *  - AWS SDK ≥ 3.729 adds CRC32 checksum headers by default, which B2 rejects.
- *    `requestChecksumCalculation: "WHEN_REQUIRED"` switches that off.
- *  - Path-style addressing avoids DNS trouble with bucket names.
+ *  - AWS SDK >= 3.729 adds CRC32 checksum headers by default, which B2 rejects
+ *    and Supabase does not need. `requestChecksumCalculation: "WHEN_REQUIRED"`
+ *    switches that off for both.
+ *  - Path-style addressing is required by Supabase and avoids DNS trouble on B2.
  */
 import {
   S3Client,
@@ -24,28 +25,59 @@ import {
   AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { env } from "./env";
+import { env, type StorageConfig } from "./env";
 import { HttpError } from "./http";
+
+const makeClient = (c: StorageConfig) =>
+  new S3Client({
+    region: c.region,
+    endpoint: c.endpoint,
+    forcePathStyle: true,
+    credentials: { accessKeyId: c.keyId, secretAccessKey: c.secret },
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
+  } as any);
 
 let client: S3Client | null = null;
 
 export const s3 = (): S3Client => {
   if (client) return client;
-  if (!env.b2Configured()) {
-    throw new HttpError(503, "File storage is not configured yet (B2_* environment variables).", "storage_unconfigured");
+  if (!env.storageConfigured()) {
+    throw new HttpError(503, "File storage is not configured yet (STORAGE_* or B2_* environment variables).", "storage_unconfigured");
   }
-  client = new S3Client({
-    region: env.b2Region(),
-    endpoint: env.b2Endpoint(),
-    forcePathStyle: true,
-    credentials: { accessKeyId: env.b2KeyId(), secretAccessKey: env.b2AppKey() },
-    requestChecksumCalculation: "WHEN_REQUIRED",
-    responseChecksumValidation: "WHEN_REQUIRED",
-  } as any);
+  client = makeClient(env.storage());
   return client;
 };
 
-export const bucket = (): string => env.b2Bucket();
+export const bucket = (): string => env.storage().bucket;
+export const provider = (): "supabase" | "b2" => env.storage().provider;
+
+/* The old Backblaze bucket — read-only use during the one-time migration. */
+let legacyClient: S3Client | null = null;
+export const legacy = (): { client: S3Client; bucket: string } | null => {
+  const c = env.legacyStorage();
+  if (!c) return null;
+  if (!legacyClient) legacyClient = makeClient(c);
+  return { client: legacyClient, bucket: c.bucket };
+};
+
+/** List every object (key + size) under a prefix in the given bucket. */
+export const listAll = async (cl: S3Client, bkt: string, prefix = ""): Promise<{ key: string; size: number }[]> => {
+  const out: { key: string; size: number }[] = [];
+  let token: string | undefined;
+  do {
+    const r = await cl.send(new ListObjectsV2Command({ Bucket: bkt, Prefix: prefix || undefined, ContinuationToken: token }));
+    for (const o of r.Contents ?? []) if (o.Key) out.push({ key: o.Key, size: Number(o.Size ?? 0) });
+    token = r.IsTruncated ? r.NextContinuationToken : undefined;
+  } while (token);
+  return out;
+};
+
+export const legacyPresignGet = async (key: string, ttl = 60 * 60 * 6): Promise<string> => {
+  const l = legacy();
+  if (!l) throw new HttpError(409, "There is no old Backblaze bucket configured to migrate from.");
+  return getSignedUrl(l.client, new GetObjectCommand({ Bucket: l.bucket, Key: key }), { expiresIn: ttl });
+};
 
 const UPLOAD_TTL = 60 * 60; // 1 hour: long enough for a big clip on salon Wi-Fi
 const DOWNLOAD_TTL = 60 * 60 * 6; // 6 hours for inline previews
@@ -91,7 +123,7 @@ export const headObject = async (key: string): Promise<{ size: number; mime: str
 export const deleteObjects = async (keys: string[]): Promise<void> => {
   const list = keys.filter(Boolean);
   if (!list.length) return;
-  // B2 supports multi-object delete; keep batches at 1000 like S3.
+  // Multi-object delete (B2 and Supabase both support it); keep batches at 1000 like S3.
   for (let i = 0; i < list.length; i += 1000) {
     const chunk = list.slice(i, i + 1000);
     if (chunk.length === 1) {

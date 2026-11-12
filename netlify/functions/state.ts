@@ -74,7 +74,7 @@ export default handle(async (req) => {
   for (const r of visibleRaw) if (r.posterKey) want.add(r.posterKey);
   for (const d of visibleDeliverables) for (const f of d.files) if (f.posterKey) want.add(f.posterKey);
   for (const i of ideas) for (const a of i.attachments) if (a.posterKey) want.add(a.posterKey);
-  if (env.b2Configured()) {
+  if (env.storageConfigured()) {
     await Promise.all(
       [...want].map(async (key) => {
         try {

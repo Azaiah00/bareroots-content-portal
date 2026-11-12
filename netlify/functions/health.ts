@@ -2,7 +2,7 @@ import type { Config } from "@netlify/functions";
 import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { env } from "./_lib/env";
 import { handle, json } from "./_lib/http";
-import { bucket, s3 } from "./_lib/s3";
+import { bucket, provider, s3 } from "./_lib/s3";
 
 /**
  * GET /api/health — a setup aid. Reports which environment variables are
@@ -12,10 +12,10 @@ import { bucket, s3 } from "./_lib/s3";
 export default handle(async () => {
   const missing = env.missing();
   let storage: { ok: boolean; detail: string } = { ok: false, detail: "not configured" };
-  if (env.b2Configured()) {
+  if (env.storageConfigured()) {
     try {
       await s3().send(new ListObjectsV2Command({ Bucket: bucket(), Prefix: "_health/" }));
-      storage = { ok: true, detail: `bucket "${bucket()}" reachable` };
+      storage = { ok: true, detail: `${provider()} bucket "${bucket()}" reachable` };
     } catch (err: any) {
       storage = { ok: false, detail: err?.name ? `${err.name}: ${err.message}` : String(err) };
     }

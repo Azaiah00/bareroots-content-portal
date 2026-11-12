@@ -15,6 +15,25 @@ Everything runs on free tiers: **Netlify** (hosting + functions + Blobs) and **B
 
 ---
 
+> **Storage moved to Supabase (Nov 5, 2026).** Backblaze's free tier hit its daily download cap, which blocked
+> playback, downloads and the "did the upload arrive" check. Files now live in **Supabase Storage**: private
+> bucket `bareroots-portal` in the *Real Advancement Hub Project* (`rfddbbogqgcbstcmhepo`, us-east-2), reached
+> through Supabase's S3-compatible endpoint, so the code path is unchanged (presigned URLs, browser <-> storage).
+> Setting `STORAGE_ENDPOINT` switches the portal over:
+>
+> | Variable | Value |
+> |---|---|
+> | `STORAGE_ENDPOINT` | `https://rfddbbogqgcbstcmhepo.storage.supabase.co/storage/v1/s3` |
+> | `STORAGE_REGION` | `us-east-2` |
+> | `STORAGE_BUCKET` | `bareroots-portal` |
+> | `STORAGE_KEY_ID`, `STORAGE_SECRET` | Supabase -> Storage -> S3 -> **New access key** |
+> | `STORAGE_BUDGET_GB` | e.g. `50` (the meter; the Pro plan includes 100 GB across the project) |
+>
+> Keep the old `B2_*` variables until the one-time copy is done: `GET /api/admin/migrate` lists what is left,
+> `POST /api/admin/migrate` + `/api/admin/migrate/complete` copy one file (studio only, the browser moves the
+> bytes, keys stay identical so every record keeps pointing at the right file). Remove `B2_*` afterwards.
+> Project-wide upload limit is 5 GB (Storage -> Settings); the project's other buckets keep their own limits.
+
 ## 1. First-time setup (about 15 minutes)
 
 ### A. Backblaze B2 — storage

@@ -14,23 +14,65 @@ const list = (key: string, fallback: string[]): string[] => {
     .filter(Boolean);
 };
 
+export interface StorageConfig {
+  provider: "supabase" | "b2";
+  endpoint: string;
+  region: string;
+  bucket: string;
+  keyId: string;
+  secret: string;
+}
+
+const b2Region = () => {
+  const explicit = read("B2_REGION");
+  if (explicit) return explicit;
+  // Derive from the endpoint: https://s3.us-east-005.backblazeb2.com → us-east-005
+  const m = read("B2_ENDPOINT").match(/s3\.([a-z0-9-]+)\.backblazeb2\.com/i);
+  return m ? m[1] : "us-east-005";
+};
+
+const b2Config = (): StorageConfig => ({
+  provider: "b2",
+  endpoint: read("B2_ENDPOINT"),
+  region: b2Region(),
+  bucket: read("B2_BUCKET"),
+  keyId: read("B2_KEY_ID"),
+  secret: read("B2_APP_KEY"),
+});
+
+/**
+ * Supabase Storage through its S3-compatible endpoint
+ * (https://<project-ref>.storage.supabase.co/storage/v1/s3). Setting
+ * STORAGE_ENDPOINT switches the whole portal to it; the B2_* variables are then
+ * only read as the source for the one-time migration.
+ */
+const supabaseConfig = (): StorageConfig => ({
+  provider: "supabase",
+  endpoint: read("STORAGE_ENDPOINT"),
+  region: read("STORAGE_REGION", "us-east-2"),
+  bucket: read("STORAGE_BUCKET", "bareroots-portal"),
+  keyId: read("STORAGE_KEY_ID"),
+  secret: read("STORAGE_SECRET"),
+});
+
+const complete = (c: StorageConfig) => Boolean(c.endpoint && c.bucket && c.keyId && c.secret);
+
 export const env = {
   clientPin: () => read("CLIENT_PIN"),
   studioPin: () => read("STUDIO_PIN"),
-  clientNames: () => list("CLIENT_NAMES", ["Iisha", "Sabrina"]),
+  clientNames: () => list("CLIENT_NAMES", ["Iisha", "Sabrina", "Destiny"]),
   studioNames: () => list("STUDIO_NAMES", ["Fred", "Azaiah"]),
   sessionSecret: () => read("SESSION_SECRET"),
 
-  b2KeyId: () => read("B2_KEY_ID"),
-  b2AppKey: () => read("B2_APP_KEY"),
-  b2Bucket: () => read("B2_BUCKET"),
-  b2Endpoint: () => read("B2_ENDPOINT"),
-  b2Region: () => {
-    const explicit = read("B2_REGION");
-    if (explicit) return explicit;
-    // Derive from the endpoint: https://s3.us-east-005.backblazeb2.com → us-east-005
-    const m = read("B2_ENDPOINT").match(/s3\.([a-z0-9-]+)\.backblazeb2\.com/i);
-    return m ? m[1] : "us-east-005";
+  /** The storage the portal reads and writes. */
+  storage: (): StorageConfig => (read("STORAGE_ENDPOINT") ? supabaseConfig() : b2Config()),
+  storageConfigured: () => complete(read("STORAGE_ENDPOINT") ? supabaseConfig() : b2Config()),
+
+  /** The old Backblaze bucket, only while migrating off it (null once B2_* is removed or B2 is still primary). */
+  legacyStorage: (): StorageConfig | null => {
+    if (!read("STORAGE_ENDPOINT")) return null;
+    const c = b2Config();
+    return complete(c) ? c : null;
   },
 
   metaStore: (): "b2" | "blobs" | "file" => {
@@ -44,12 +86,12 @@ export const env = {
   businessName: () => read("BUSINESS_NAME", "Bare Roots"),
   studioName: () => read("STUDIO_NAME", "Couture House Co."),
 
-  /** True when every variable needed to talk to B2 is present. */
-  b2Configured: () => Boolean(read("B2_KEY_ID") && read("B2_APP_KEY") && read("B2_BUCKET") && read("B2_ENDPOINT")),
-
   /** Missing variables, for the health check. */
   missing: (): string[] => {
-    const required = ["CLIENT_PIN", "STUDIO_PIN", "SESSION_SECRET", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_ENDPOINT"];
-    return required.filter((k) => !read(k));
+    const base = ["CLIENT_PIN", "STUDIO_PIN", "SESSION_SECRET"];
+    const storage = read("STORAGE_ENDPOINT")
+      ? ["STORAGE_ENDPOINT", "STORAGE_KEY_ID", "STORAGE_SECRET"]
+      : ["B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_ENDPOINT"];
+    return [...base, ...storage].filter((k) => !read(k));
   },
 };

@@ -22,7 +22,9 @@ if (existsSync(envFile)) {
   console.log("\n  No .env found. Copy .env.example to .env first.\n");
 }
 
-const required = ["CLIENT_PIN", "STUDIO_PIN", "SESSION_SECRET", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_ENDPOINT", "PORTAL_ORIGINS"];
+// Storage: Supabase (STORAGE_*) is the live setup; B2_* is only needed while migrating off Backblaze.
+const storageVars = env.STORAGE_ENDPOINT ? ["STORAGE_ENDPOINT", "STORAGE_BUCKET", "STORAGE_KEY_ID", "STORAGE_SECRET"] : ["B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_ENDPOINT"];
+const required = ["CLIENT_PIN", "STUDIO_PIN", "SESSION_SECRET", ...storageVars, "PORTAL_ORIGINS"];
 let problems = 0;
 const warn = (m) => {
   problems++;
@@ -43,11 +45,14 @@ if (env.CLIENT_PIN && env.STUDIO_PIN) {
 if (env.SESSION_SECRET && (env.SESSION_SECRET.length < 24 || env.SESSION_SECRET.includes("change-me"))) {
   warn(`SESSION_SECRET is weak — use this one: ${randomBytes(32).toString("hex")}`);
 }
-if (env.B2_ENDPOINT && !/^https:\/\/s3\.[a-z0-9-]+\.backblazeb2\.com$/i.test(env.B2_ENDPOINT)) {
+if (env.STORAGE_ENDPOINT && !/^https:\/\/[a-z0-9]+\.storage\.supabase\.co\/storage\/v1\/s3$/i.test(env.STORAGE_ENDPOINT)) {
+  warn("STORAGE_ENDPOINT should look like https://<project-ref>.storage.supabase.co/storage/v1/s3");
+}
+if (!env.STORAGE_ENDPOINT && env.B2_ENDPOINT && !/^https:\/\/s3\.[a-z0-9-]+\.backblazeb2\.com$/i.test(env.B2_ENDPOINT)) {
   warn("B2_ENDPOINT should look like https://s3.us-east-005.backblazeb2.com");
 }
 if (env.PORTAL_ORIGINS && !/netlify\.app|https:\/\//.test(env.PORTAL_ORIGINS)) {
   warn("PORTAL_ORIGINS should include your https Netlify URL");
 }
-console.log(problems ? `\n  ${problems} thing(s) to fix.\n` : "\n  Looks good. Run npm run setup:b2 next.\n");
+console.log(problems ? `\n  ${problems} thing(s) to fix.\n` : "\n  Looks good.\n");
 process.exit(problems ? 1 : 0);
