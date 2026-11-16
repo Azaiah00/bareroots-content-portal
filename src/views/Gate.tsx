@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/api";
 
 const NAME_KEY = "br-portal-name";
 
-const CLIENT_NAMES = ["Iisha", "Sabrina"];
+const CLIENT_NAMES = ["Iisha", "Sabrina", "Destiny"];
 const STUDIO_NAMES = ["Fred", "Azaiah"];
 
 export const Gate = () => {
